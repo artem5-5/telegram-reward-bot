@@ -3,6 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from services.reward_service import RewardService
+from aiogram.types import BotCommand
 from config import BOT_TOKEN
 
 # Настройка логирования
@@ -14,6 +15,17 @@ dp = Dispatcher()
 
 # Сервис наград
 reward_service = RewardService()
+
+async def set_commands(bot: Bot):
+    commands = [
+        BotCommand(command="award", description="Выдать награду"),
+        BotCommand(command="rewards", description="Посмотреть награды"),
+        BotCommand(command="remove_award", description="Удалить награду"),
+        BotCommand(command="add_admin", description="Добавить администратора"),
+        BotCommand(command="remove_admin", description="Удалить администратора"),
+    ]
+
+    await bot.set_my_commands(commands)
 
 @dp.message(Command("award"))
 async def award_command(message: types.Message):
@@ -110,10 +122,49 @@ async def rewards_command(message: types.Message):
         return
 
     username = username_arg[1:]
-    count = reward_service.get_user_reward_count(username)
-    await message.reply(f"У пользователя @{username} {count} наград.")
+
+    response = reward_service.format_user_rewards(username)
+    await message.reply(response)
+
+@dp.message(Command("remove_award"))
+async def remove_award_command(message: types.Message):
+    if message.chat.type not in ['group', 'supergroup']:
+        await message.reply("Эта команда доступна только в групповых чатах.")
+        return
+
+    removed_by_username = message.from_user.username
+    if not removed_by_username:
+        await message.reply("У вас должен быть установлен username.")
+        return
+
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply("Использование: /remove_award @username id")
+        return
+
+    _, username_arg, reward_id_arg = args
+
+    if not username_arg.startswith('@'):
+        await message.reply("Укажите пользователя в формате @username")
+        return
+
+    if not reward_id_arg.isdigit():
+        await message.reply("ID должен быть числом")
+        return
+
+    target_username = username_arg[1:]
+    reward_id = int(reward_id_arg)
+
+    success, response = reward_service.remove_reward_by_id(
+        target_username=target_username,
+        reward_id=reward_id,
+        removed_by=removed_by_username
+    )
+
+    await message.reply(response)
 
 async def main():
+    await set_commands(bot)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
